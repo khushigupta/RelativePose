@@ -5,9 +5,17 @@ import keras as K
 from keras.models import Sequential, Model
 
 
+def identity_loss(y_true, y_pred):
+    return K.mean(y_pred)
+
+
 def euclidean_distance(outputs):
-    x, y = outputs
-    return K.sqrt(K.sum(K.square(x - y), axis=1, keepdims=True))
+    x, y, l = outputs
+
+    if l == 1:
+        return K.sqrt(K.sum(K.square(x - y), axis=1, keepdims=True))
+    else:
+        return max(0, 1 - K.sqrt(K.sum(K.square(x - y), axis=1, keepdims=True)))
 
 
 def eucl_dist_output_shape(shapes):
@@ -39,10 +47,11 @@ def base_model(input_shape):
     return model
 
 
-def match_model(input_shape):
+def match_model(input_shape, label_shape):
 
     input_left = Input(shape=input_shape)
     input_right = Input(shape=input_shape)
+    labels = Input(shape=label_shape)
 
     base = base_model(input_shape)
     base.add(Flatten())
@@ -53,7 +62,7 @@ def match_model(input_shape):
     out_right = base(input_right)
 
     distance = Lambda(euclidean_distance,
-                      output_shape=eucl_dist_output_shape)([out_left, out_right])
+                      output_shape=eucl_dist_output_shape)([out_left, out_right, labels])
 
     model = Model([input_left, input_right], distance)
     return model
