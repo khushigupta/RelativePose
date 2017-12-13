@@ -6,10 +6,9 @@ from random import shuffle
 import random
 from imageio import imread
 from skimage.transform import resize
-import keras
 from keras.callbacks import ModelCheckpoint
-
-from siamese_function import match_model, pose_model, hybrid_model, identity_loss
+from siamese_model import match_model, pose_model, hybrid_model, identity_loss
+import keras
 
 
 def get_model(model_type, **kwargs):
@@ -48,7 +47,6 @@ def get_model(model_type, **kwargs):
         model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error', identity_loss])
 
     return model
-
 
 
 def posenet_generator(imgs, rel_quaternions, rel_translations, batch_size=32):
@@ -142,7 +140,6 @@ def main(args):
 
     model = get_model('pose', match_model=None)
     trained_model = train(model, imgs_train, imgs_val)
-
 
 
 # Run the script as follows:
