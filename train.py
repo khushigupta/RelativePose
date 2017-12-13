@@ -1,6 +1,5 @@
-import numpy as np
 import argparse
-import datetime
+import numpy as np
 import pickle
 import os
 from random import shuffle
@@ -9,8 +8,7 @@ from imageio import imread
 from skimage.transform import resize
 
 import keras
-from keras import optimizers
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.callbacks import ModelCheckpoint
 from keras.models import load_model, save_model
 
 from siamese_function import match_model, pose_model, identity_loss
@@ -37,11 +35,6 @@ def get_model(model_type, **kwargs):
             match_pretrained = kwargs['match_model']
             pose = pose_model(input_shape, match_pretrained)
 
-        pose.compile(optimizer='sgd',
-                     loss=['mean_squared_error', 'mean_squared_error'],
-                     metrics=['accuracy'],
-                     loss_weights=[1., 1])
-
         return pose
 
 '''
@@ -62,8 +55,8 @@ def generate(imgs, rel_quaternions, rel_translations, batch_size = 32):
             x = list(imgs.keys())
             x.remove(img1_path)
             img2_path = random.choice(x)
-            img1 = imgs[img1_path]
-            img2 = imgs[img2_path]
+            x1[i, ...] = imgs[img1_path]
+            x2[i, ...] = imgs[img2_path]
 
             k1 = 'seq1/' + img1_path + ' ' + 'seq1/' + img2_path
             k2 = 'seq1/' + img2_path + ' ' + 'seq1/' + img1_path
@@ -85,7 +78,7 @@ def load_all_imgs(img_paths, dataset_path):
     imgs = {}
     for img_path in os.listdir(dataset_path):
         img = imread(os.path.join(dataset_path, img_path))
-        img = resize(img, (224,224)) * 255 - [122.63791547, 123.32784235, 112.4143373]
+        img = resize(img, (224, 224)) * 255 - [122.63791547, 123.32784235, 112.4143373]
         imgs[img_path] = img
     return imgs
 
@@ -95,17 +88,17 @@ def train(model, imgs_train, imgs_val):
     rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
     rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
 
-    train_generator = generate(imgs_train, rel_quaternions, rel_translations, batch_size = 32)
-    val_generator = generate(imgs_val, rel_quaternions, rel_translations, batch_size = 32)
+    train_generator = generate(imgs_train, rel_quaternions, rel_translations, batch_size=32)
+    val_generator = generate(imgs_val, rel_quaternions, rel_translations, batch_size=32)
 
     # For checkpointing
     filepath="models/posenet-{e:02d}-{val_acc:.2f}.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=False, mode='min')
 
-    model.fit_generator(generator = train_generator,
-                        steps_per_epoch = 1000,
-                        validation_data = val_generator,
-                        validation_steps = 10,
+    model.fit_generator(generator=train_generator,
+                        steps_per_epoch=1000,
+                        validation_data=val_generator,
+                        validation_steps=10,
                         epochs=100,
                         callbacks=[checkpoint])
     return model
@@ -133,7 +126,7 @@ def main(args):
 
     model = pose_model((224, 224, 3), None)
     optimizer = keras.optimizers.Adam(lr=0.001)
-    model.compile(optimizer,loss=['mean_squared_error', 'mean_squared_error'])
+    model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error'])
 
     model = train(model, imgs_train, imgs_val)
 
