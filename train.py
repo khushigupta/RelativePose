@@ -6,36 +6,64 @@ from random import shuffle
 import random
 from imageio import imread
 from skimage.transform import resize
+<<<<<<< HEAD
+import keras
+from keras.callbacks import ModelCheckpoint
+
+from siamese_function import match_model, pose_model, hybrid_model, identity_loss
+=======
 
 import keras
 from keras.callbacks import ModelCheckpoint
 from keras.models import load_model, save_model
 
 from siamese_function import match_model, pose_model, identity_loss
+>>>>>>> 191909fa7ad50ea5520d054c32ae992ad6852f90
 
 
 def get_model(model_type, **kwargs):
 
+    optimizer = keras.optimizers.Adam(lr=0.001)
+
     if model_type == 'match':
-        input_shape = (None, 64, 64, 3)
-        label_shape = (None, 1)
-        match = match_model(input_shape, label_shape)
-        match.compile(optimizer='sgd',
+
+        match_shape = (64, 64, 3)
+        label_shape = (1, )
+        model = match_model(match_shape, label_shape)
+        model.compile(optimizer='sgd',
                       loss=identity_loss,
                       metrics=['accuracy'])
 
+        model.compile(optimizer, loss=identity_loss)
 
     if model_type == 'pose':
 
-        input_shape = (None, 224, 224, 3)
+        pose_shape = (224, 224, 3)
 
         if 'match_model' not in kwargs:
-            pose = pose_model(input_shape)
+            model = pose_model(pose_shape)
         else:
             match_pretrained = kwargs['match_model']
+<<<<<<< HEAD
+            model = pose_model(pose_shape, match_pretrained)
+            model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error'])
+
+    if model_type == 'hybrid':
+
+        pose_shape = (224, 224, 3)
+        match_shape = (64, 64, 3)
+        label_shape = (1,)
+
+        model = hybrid_model(pose_shape, match_shape, label_shape)
+        model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error', identity_loss])
+
+    return model
+
+=======
             pose = pose_model(input_shape, match_pretrained)
 
         return pose
+>>>>>>> 191909fa7ad50ea5520d054c32ae992ad6852f90
 
 '''
 Data generator function for yielding training images
@@ -117,6 +145,22 @@ def predict():
 
 
 def main(args):
+<<<<<<< HEAD
+
+    image_paths = os.listdir(args.dataset_path)
+    shuffle(image_paths)
+    validation_split = 0.05
+    partition = {'train': image_paths[:int(validation_split*len(image_paths))],
+                 'val': image_paths[int(validation_split*len(image_paths)):]}
+
+
+    imgs_train = load_all_imgs(partition['train'], args.dataset_path)
+    imgs_val = load_all_imgs(partition['val'], args.dataset_path)
+
+    model = get_model('pose', match_model=None)
+    trained_model = train(model, imgs_train, imgs_val)
+
+=======
 
     image_paths = os.listdir(args.dataset_path)
     shuffle(image_paths)
@@ -133,6 +177,7 @@ def main(args):
     model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error'])
 
     model = train(model, imgs_train, imgs_val)
+>>>>>>> 191909fa7ad50ea5520d054c32ae992ad6852f90
 
 
 # Run the script as follows:
