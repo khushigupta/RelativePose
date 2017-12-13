@@ -84,10 +84,8 @@ def train(model, image_paths):
 
     rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
     rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
-
-    # callbacks = [EarlyStopping(monitor='val_loss', patience=4, verbose=1),
-    #              ModelCheckpoint(model_weights_path, monitor='val_loss',
-    #                              save_best_only=True, verbose=0)]
+    filepath="posenet-{e:02d}-{val_acc:.2f}.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
 
     # Split matches into train and validation
     shuffle(image_paths)
@@ -104,7 +102,8 @@ def train(model, image_paths):
                     steps_per_epoch = 1000,
                     validation_data = val_generator,
                     validation_steps = 10,
-                    epochs=100)
+                    epochs=100,
+                    callbacks=[checkpoint])
     return model
 
 
