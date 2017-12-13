@@ -5,6 +5,8 @@ import keras as K
 from keras.models import Sequential, Model
 
 
+
+
 def identity_loss(y_true, y_pred):
     return K.mean(y_pred)
 

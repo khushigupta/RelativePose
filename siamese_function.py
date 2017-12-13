@@ -139,5 +139,4 @@ def pose_model(input_shape, match_model=None):
 
 # m = match_model((64, 64, 3), (1, ))
 
-
 # p = pose_model((224, 224, 3), m)
