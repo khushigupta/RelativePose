@@ -6,10 +6,12 @@ from random import shuffle
 import random
 from imageio import imread
 from skimage.transform import resize
-from keras.callbacks import ModelCheckpoint
-from siamese_model import match_model, pose_model, hybrid_model, identity_loss
-import keras
 
+import keras
+from keras.callbacks import ModelCheckpoint
+
+from siamese_model import match_model, pose_model, hybrid_model, identity_loss
+from match_net import matchnet_gen
 
 def get_model(model_type, **kwargs):
 
@@ -94,21 +96,33 @@ def load_all_imgs(img_paths, dataset_path):
     return imgs
 
 
-def train(model, imgs_train, imgs_val):
+def train_posenet(dataset_path, validation_split=0.05):
     ''' Training implementation for PoseNet as of now'''
+
+    ###====================== Fetch all images ===========================###
+    image_paths = os.listdir(dataset_path)
+    shuffle(image_paths)
+    partition = {'train': image_paths[:int(validation_split*len(image_paths))],
+                 'val': image_paths[int(validation_split*len(image_paths)):]}
+    imgs_train = load_all_imgs(partition['train'], dataset_path)
+    imgs_val = load_all_imgs(partition['val'], dataset_path)
+
+    ###====================== GT for training ===========================###
     rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
     rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
 
+    ###====================== Generators ===========================###
     train_generator = posenet_generator(imgs_train, rel_quaternions,
                                         rel_translations, batch_size=32)
     val_generator = posenet_generator(imgs_val, rel_quaternions,
                                       rel_translations, batch_size=32)
 
-    # For checkpointing
-    filepath = "models/posenet-{e:02d}.hdf5"
+
+    ###====================== Train model ===========================###
+    filepath = "models/posenet-{epoch:02d}.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
                                  save_best_only=False, mode='min')
-
+    model = get_model('pose', match_model=None)
     model.fit_generator(generator=train_generator,
                         steps_per_epoch=100,
                         validation_data=val_generator,
@@ -116,6 +130,25 @@ def train(model, imgs_train, imgs_val):
                         epochs=100,
                         callbacks=[checkpoint])
     return model
+
+def train_matchnet(dataset_path, validation_split=0.05):
+
+    ###====================== Load train + val matches ===========================###
+    matches = pickle.load(open("data/matches_clean_2.pkl", "rb"))
+    shuffle(matches)
+    partition = {'train': matches[:int(validation_split*len(matches))],
+                 'val': matches[int(validation_split*len(matches)):]}
+
+    ###====================== Generators ===========================###
+    train_generator = matchnet_gen(partition['train'],
+                                   batch_size=10, patch_size=64, pos_ratio=0.3)
+    train_generator = matchnet_gen(partition['val'],
+                                   batch_size=10, patch_size=64, pos_ratio=0.3)
+
+    filepath = "models/matchnet{epoch:02d}.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
+                                 save_best_only=False, mode='min')
+    model = get_model('match', match_model=None)
 
 
 def evaluate():
@@ -128,26 +161,24 @@ def predict():
 
 def main(args):
 
-    image_paths = os.listdir(args.dataset_path)
-    shuffle(image_paths)
-    validation_split = 0.05
-    partition = {'train': image_paths[:int(validation_split*len(image_paths))],
-                 'val': image_paths[int(validation_split*len(image_paths)):]}
+    if args.model == 'posenet':
+        train_posenet(args.dataset_path)
+    elif args.model == 'matchnet':
+        train_matchnet(args.dataset_path)
+    elif args.model == 'hybrid':
+        print('Model not implemented!')
+    else:
+        print('Invalid model. Options are posenet, matchnet, hybrid')
 
-
-    imgs_train = load_all_imgs(partition['train'], args.dataset_path)
-    imgs_val = load_all_imgs(partition['val'], args.dataset_path)
-
-    model = get_model('pose', match_model=None)
-    trained_model = train(model, imgs_train, imgs_val)
 
 
 # Run the script as follows:
-# python train.py --dataset_path='/home/sudeep/khushi/KingsCollege/seq1'
+# python train.py --dataset_path='/home/sudeep/khushi/KingsCollege/seq1' --model=posenet
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Relative Pose Estimation')
     parser.add_argument('--dataset_path', type=str, default='', help='Path to dataset')
+    parse.add_argument('--model', type=str, default='posenet', help='Type of model - posenet, matchnet, hybrid')
 
     args = parser.parse_args()
 

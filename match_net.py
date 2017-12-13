@@ -54,11 +54,13 @@ def matchnet_gen(matches, batch_size=10, patch_size=64, pos_ratio=0.3):
         patches2 = np.zeros((batch_size, patch_size, patch_size, 3))
         labels = np.zeros(10)
 
+        # One image pair per iteration
+        match = random.choice(matches)
+        img1 = imread(match.img1_path)
+        img2 = imread(match.img2.path)
+
         for i in range(batch_size):
-            match = random.choice(matches)
             loc = random.choice(match.locs)
-            img1 = imread(match.img1_path)
-            img2 = imread(match.img2.path)
             patches1[i, ...] = get_crop(img1, loc[0], patch_size=64)
 
             # Choose negative or positive sample
@@ -66,7 +68,6 @@ def matchnet_gen(matches, batch_size=10, patch_size=64, pos_ratio=0.3):
 
             # Positive case
             if prob <= pos_ratio:
-                loc = random.choice(match.locs)
                 patches2[i, ...] = get_crop(img2, loc[1], patch_size=64)
                 labels[i] = 1
 
