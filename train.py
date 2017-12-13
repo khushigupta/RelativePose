@@ -1,9 +1,19 @@
 import numpy as np
-from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras.models import load_model, save_model
-from siamese_model import match_model, pose_model, identity_loss
 import argparse
 import datetime
+import pickle
+import os
+from random import shuffle
+import random
+from imageio import imread
+from skimage.transform import resize
+
+import keras
+from keras import optimizers
+from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.models import load_model, save_model
+
+from siamese_function import match_model, pose_model, identity_loss
 
 
 def get_model(model_type, **kwargs):
@@ -34,44 +44,67 @@ def get_model(model_type, **kwargs):
 
         return pose
 
+'''
+Data generator function for yielding training images
+'''
+def generate(img_paths, rel_quaternions, rel_translations, batch_size = 32,
+             dataset_path='/Users/animesh/Downloads/geometry_images/KingsCollege/seq1'):
 
-def train(model, df_train, train_dir, fit_index, val_index, label_map,
-                model_weights_path, data_gen_args_fit={}, data_gen_args_val={}, seed=2017):
+    while 1:
 
+        # Placeholders for current iteration
+        x1 = np.zeros((batch_size, 224, 224, 3))
+        x2 = np.zeros((batch_size, 224, 224, 3))
+        y_q = np.zeros((batch_size, 4))
+        y_t = np.zeros((batch_size, 3))
 
-    callbacks = [EarlyStopping(monitor='val_loss', patience=4, verbose=1),
-                 ModelCheckpoint(model_weights_path, monitor='val_loss',
-                                 save_best_only=True, verbose=0)]
+        for i in range(batch_size):
+            img1_path = random.choice(img_paths)
+            x = list(img_paths)
+            x.remove(img1_path)
+            img2_path = random.choice(x)
+            img1 = imread(os.path.join(dataset_path, img1_path))
+            img2 = imread(os.path.join(dataset_path, img2_path))
+            x1[i, ...] = resize(img1, (224,224))
+            x2[i, ...] = resize(img2, (224, 224))
 
-    steps_per_epoch_fit = np.ceil(len(fit_index) / args.batch_size)
-    steps_per_epoch_val = np.ceil(len(val_index) / args.batch_size)
+            k1 = 'seq1/' + img1_path + ' ' + 'seq1/' + img2_path
+            k2 = 'seq1/' + img2_path + ' ' + 'seq1/' + img1_path
 
-    fit_generator = batch_generator(train_dir,
-                                    df_train.iloc[fit_index],
-                                    label_map,
-                                    batch_size=args.batch_size,
-                                    number_of_batches=steps_per_epoch_fit,
-                                    data_gen_args=data_gen_args_fit,
-                                    seed=seed)
+            if k1 in rel_quaternions.keys():
+                y_q[i, :] = rel_quaternions[k1].flatten()
+                y_t[i, :] = rel_translations[k1].flatten()
+            else:
+                y_q[i, :] = rel_quaternions[k2].flatten()
+                y_t[i, :] = rel_translations[k2].flatten()
 
-    val_generator = batch_generator(train_dir,
-                                    df_train.iloc[val_index],
-                                    label_map,
-                                    batch_size=args.batch_size,
-                                    shuffle=False,
-                                    number_of_batches=steps_per_epoch_val,
-                                    data_gen_args=data_gen_args_val)
-    try:
-        model.fit_generator(generator=fit_generator,
-                            steps_per_epoch=steps_per_epoch_fit,
-                            epochs=args.epochs,
-                            verbose=1,
-                            validation_data=val_generator,
-                            validation_steps=steps_per_epoch_val,
-                            callbacks=callbacks)
-    except KeyboardInterrupt:
-        pass
+        yield ([x1, x2], [y_q, y_t])
 
+def train(model, image_paths):
+
+    rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
+    rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
+
+    # callbacks = [EarlyStopping(monitor='val_loss', patience=4, verbose=1),
+    #              ModelCheckpoint(model_weights_path, monitor='val_loss',
+    #                              save_best_only=True, verbose=0)]
+
+    # Split matches into train and validation
+    shuffle(image_paths)
+    validation_split = 0.05
+    partition = {'train':image_paths[:int(validation_split*len(image_paths))],
+              'val':image_paths[int(validation_split*len(image_paths)):]}
+
+    train_generator = generate(partition['train'], rel_quaternions, rel_translations, batch_size = 32,
+                      dataset_path='/Users/animesh/Downloads/geometry_images/KingsCollege/seq1')
+    val_generator = generate(partition['val'], rel_quaternions, rel_translations, batch_size = 32,
+                    dataset_path = '/Users/animesh/Downloads/geometry_images/KingsCollege/seq1')
+
+    model.fit_generator(generator = train_generator,
+                    steps_per_epoch = 1000,
+                    validation_data = val_generator,
+                    validation_steps = 10,
+                    epochs=100)
     return model
 
 
@@ -92,58 +125,69 @@ def get_name():
 
 def main():
 
-    if args.model_type == 'match':
-        model = get_model('match')
+    rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
+    rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
+    dataset_path = '/Users/animesh/Downloads/geometry_images/KingsCollege/seq1'
+    image_paths = os.listdir(dataset_path)
 
-    else:
-        if args.pretrain_path is not None:
-            match_trained = load_model(args.pretrain_path)
-            model = get_model('match', pretrain=match_trained)
-        else:
-            model = get_model('match')
+    model = pose_model((224, 224, 3), None)
+    optimizer = keras.optimizers.Adam(lr=0.001)
+    model.compile(optimizer,loss=['mean_squared_error', 'mean_squared_error'])
 
-    if args.train:
-        trained_model = train(model)
-        save_model(get_name(), trained_model)
+    model = train(model, image_paths)
 
-        print('Finished training!')
 
-    if args.evaluate:
-        model = load_model(args.e_model)
-        evaluate(model)
-        print('Finished Evaluating!')
 
-    if args.predict:
-        model = load_model(args.p_model)
-        predict(model)
-        print('Finished Predicting!')
+    # if args.model_type == 'match':
+    #     model = get_model('match')
+    #
+    # else:
+    #     if args.pretrain_path is not None:
+    #         match_trained = load_model(args.pretrain_path)
+    #         model = get_model('match', pretrain=match_trained)
+    #     else:
+    #         model = get_model('match')
+    #
+    # if args.train:
+    #     trained_model = train(model)
+    #     save_model(get_name(), trained_model)
+    #
+    #     print('Finished training!')
+    #
+    # if args.evaluate:
+    #     model = load_model(args.e_model)
+    #     evaluate(model)
+    #     print('Finished Evaluating!')
+    #
+    # if args.predict:
+    #     model = load_model(args.p_model)
+    #     predict(model)
+    #     print('Finished Predicting!')
 
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='PyTorch Training')
-
-    parser.add_argument('--cuda', action='store_true', default=False, help='Enables CUDA training')
-    parser.add_argument('--train', type=int, default=True, help='Train model')
-    parser.add_argument('--model_type', type=str, default='', help='Train Pose/SIFT model')
-    parser.add_argument('--pretrain_path', type=str, default='', help='Path to pretrained SIFT model')
-
-    parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train (default: 50)')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch Size (default: 32)')
-    parser.add_argument('--lr', type=float, default=0.01, metavar='LR', help='learning rate (default: 0.01)')
-    parser.add_argument('--momentum', type=float, default=0.9, metavar='M', help='SGD momentum (default: 0.5)')
-
-    parser.add_argument('--path', type=str, default='', help='Path to store trained models')
-    parser.add_argument('--log_path', type=str, default='', help='Path to store logs')
-
-    parser.add_argument('--evaluate', type=int, default=False, help='Evaluate model')
-    parser.add_argument('--e_model', type=int, default=False, help='Model to evaluate')
-
-    parser.add_argument('--predict', type=int, default=False, help='Get predictions')
-    parser.add_argument('--p_model', type=int, default=False, help='Model to use for predictions')
-
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(description='PyTorch Training')
+    #
+    # parser.add_argument('--cuda', action='store_true', default=False, help='Enables CUDA training')
+    # parser.add_argument('--train', type=int, default=True, help='Train model')
+    # parser.add_argument('--model_type', type=str, default='', help='Train Pose/SIFT model')
+    # parser.add_argument('--pretrain_path', type=str, default='', help='Path to pretrained SIFT model')
+    #
+    # parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train (default: 50)')
+    # parser.add_argument('--batch_size', type=int, default=32, help='Batch Size (default: 32)')
+    # parser.add_argument('--lr', type=float, default=0.01, metavar='LR', help='learning rate (default: 0.01)')
+    # parser.add_argument('--momentum', type=float, default=0.9, metavar='M', help='SGD momentum (default: 0.5)')
+    #
+    # parser.add_argument('--path', type=str, default='', help='Path to store trained models')
+    # parser.add_argument('--log_path', type=str, default='', help='Path to store logs')
+    #
+    # parser.add_argument('--evaluate', type=int, default=False, help='Evaluate model')
+    # parser.add_argument('--e_model', type=int, default=False, help='Model to evaluate')
+    #
+    # parser.add_argument('--predict', type=int, default=False, help='Get predictions')
+    # parser.add_argument('--p_model', type=int, default=False, help='Model to use for predictions')
+    #
+    # args = parser.parse_args()
 
     main()
-
-
