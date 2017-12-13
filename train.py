@@ -11,7 +11,8 @@ import keras
 from keras.callbacks import ModelCheckpoint
 
 from siamese_model import match_model, pose_model, hybrid_model, identity_loss
-from match_net import matchnet_gen
+from match_net import matchnet_gen, Match
+
 
 def get_model(model_type, **kwargs):
 
@@ -22,7 +23,7 @@ def get_model(model_type, **kwargs):
         match_shape = (64, 64, 3)
         label_shape = (1, )
         model = match_model(match_shape, label_shape)
-        model.compile(optimizer='sgd',
+        model.compile(optimizer=optimizer,
                       loss=identity_loss,
                       metrics=['accuracy'])
 
@@ -140,16 +141,21 @@ def train_matchnet(dataset_path, validation_split=0.05):
                  'val': matches[int(validation_split*len(matches)):]}
 
     ###====================== Generators ===========================###
-    train_generator = matchnet_gen(partition['train'],
+    train_generator = matchnet_gen(partition['train'], dataset_path,
                                    batch_size=10, patch_size=64, pos_ratio=0.3)
-    train_generator = matchnet_gen(partition['val'],
+    val_generator = matchnet_gen(partition['val'], dataset_path,
                                    batch_size=10, patch_size=64, pos_ratio=0.3)
 
     filepath = "models/matchnet{epoch:02d}.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
                                  save_best_only=False, mode='min')
     model = get_model('match', match_model=None)
-
+    model.fit_generator(generator=train_generator,
+                        steps_per_epoch=100,
+                        validation_data=val_generator,
+                        validation_steps=5,
+                        epochs=100,
+                        callbacks=[checkpoint])
 
 def evaluate():
     pass
@@ -178,7 +184,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Relative Pose Estimation')
     parser.add_argument('--dataset_path', type=str, default='', help='Path to dataset')
-    parse.add_argument('--model', type=str, default='posenet', help='Type of model - posenet, matchnet, hybrid')
+    parser.add_argument('--model', type=str, default='posenet', help='Type of model - posenet, matchnet, hybrid')
 
     args = parser.parse_args()
 

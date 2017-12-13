@@ -1,9 +1,11 @@
 import random
+import os
+import pdb
 import numpy as np
 
 from imageio import imread
 
-class Match():
+class Match(object):
     def __init__(self, img1_path, img2_path, locs):
         self.img1_path = img1_path
         self.img2_path = img2_path
@@ -45,7 +47,7 @@ def get_negative_crop(img, center_to_avoid, patch_size=64):
     return img[int(x_rand-patch_size/2):int(x_rand+patch_size/2),
                int(y_rand-patch_size/2):int(y_rand+patch_size/2), :]
 
-def matchnet_gen(matches, batch_size=10, patch_size=64, pos_ratio=0.3):
+def matchnet_gen(matches, dataset_path, batch_size=10, patch_size=64, pos_ratio=0.3):
     ''' Generator for the matchnet architecture '''
 
     while 1:
@@ -56,8 +58,8 @@ def matchnet_gen(matches, batch_size=10, patch_size=64, pos_ratio=0.3):
 
         # One image pair per iteration
         match = random.choice(matches)
-        img1 = imread(match.img1_path)
-        img2 = imread(match.img2.path)
+        img1 = imread(os.path.join(dataset_path, os.path.basename(match.img1_path)))
+        img2 = imread(os.path.join(dataset_path, os.path.basename(match.img2_path)))
 
         for i in range(batch_size):
             loc = random.choice(match.locs)
@@ -76,4 +78,4 @@ def matchnet_gen(matches, batch_size=10, patch_size=64, pos_ratio=0.3):
                 patches2[i, ...] = get_negative_crop(img2, center_to_avoid=loc[1], patch_size=64)
                 labels[i] = 0
 
-        return [patches1, patches2, labels], []
+        yield [patches1, patches2, labels], np.zeros((batch_size))
