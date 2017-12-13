@@ -6,19 +6,10 @@ from random import shuffle
 import random
 from imageio import imread
 from skimage.transform import resize
-<<<<<<< HEAD
 import keras
 from keras.callbacks import ModelCheckpoint
 
 from siamese_function import match_model, pose_model, hybrid_model, identity_loss
-=======
-
-import keras
-from keras.callbacks import ModelCheckpoint
-from keras.models import load_model, save_model
-
-from siamese_function import match_model, pose_model, identity_loss
->>>>>>> 191909fa7ad50ea5520d054c32ae992ad6852f90
 
 
 def get_model(model_type, **kwargs):
@@ -44,7 +35,6 @@ def get_model(model_type, **kwargs):
             model = pose_model(pose_shape)
         else:
             match_pretrained = kwargs['match_model']
-<<<<<<< HEAD
             model = pose_model(pose_shape, match_pretrained)
             model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error'])
 
@@ -59,16 +49,10 @@ def get_model(model_type, **kwargs):
 
     return model
 
-=======
-            pose = pose_model(input_shape, match_pretrained)
 
-        return pose
->>>>>>> 191909fa7ad50ea5520d054c32ae992ad6852f90
 
-'''
-Data generator function for yielding training images
-'''
 def posenet_generator(imgs, rel_quaternions, rel_translations, batch_size=32):
+    ''' Data generator function for yielding training images '''
 
     while 1:
 
@@ -145,7 +129,6 @@ def predict():
 
 
 def main(args):
-<<<<<<< HEAD
 
     image_paths = os.listdir(args.dataset_path)
     shuffle(image_paths)
@@ -160,24 +143,6 @@ def main(args):
     model = get_model('pose', match_model=None)
     trained_model = train(model, imgs_train, imgs_val)
 
-=======
-
-    image_paths = os.listdir(args.dataset_path)
-    shuffle(image_paths)
-    validation_split = 0.05
-    partition = {'train':image_paths[:int(validation_split*len(image_paths))],
-                 'val':image_paths[int(validation_split*len(image_paths)):]}
-
-
-    imgs_train = load_all_imgs(partition['train'], args.dataset_path)
-    imgs_val = load_all_imgs(partition['val'], args.dataset_path)
-
-    model = pose_model((224, 224, 3), None)
-    optimizer = keras.optimizers.Adam(lr=0.001)
-    model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error'])
-
-    model = train(model, imgs_train, imgs_val)
->>>>>>> 191909fa7ad50ea5520d054c32ae992ad6852f90
 
 
 # Run the script as follows:
