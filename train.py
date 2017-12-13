@@ -100,9 +100,9 @@ def train(model, imgs_train, imgs_val):
                                  save_best_only=False, mode='min')
 
     model.fit_generator(generator=train_generator,
-                        steps_per_epoch=1000,
+                        steps_per_epoch=100,
                         validation_data=val_generator,
-                        validation_steps=10,
+                        validation_steps=5,
                         epochs=100,
                         callbacks=[checkpoint])
     return model
