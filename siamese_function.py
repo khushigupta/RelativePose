@@ -44,11 +44,10 @@ def vgg_16():
     return model
 
 
-def base_model(input_shape):
+def base_model():
 
     vgg = vgg_16()
-
-    inp = Input(shape=input_shape)
+    inp = Input(shape=(None, None, 3))
     x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1', weights=vgg.layers[1].get_weights())(inp)
     x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2', weights=vgg.layers[2].get_weights())(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool', weights=vgg.layers[3].get_weights())(x)
@@ -84,7 +83,7 @@ def match_model(input_shape, label_shape):
     input_right = Input(shape=input_shape)
     labels = Input(shape=label_shape)
 
-    base = base_model(input_shape)
+    base = base_model()
     flat = Flatten()
     dense = Dense(128, activation='relu', name='fc6')
 
@@ -108,7 +107,7 @@ def pose_model(input_shape, match_model=None):
     input_right = Input(shape=input_shape)
 
     if match_model is None:
-        base = base_model(input_shape)
+        base = base_model()
     else:
         base = match_model.layers[2]  # the base model
 
@@ -126,7 +125,6 @@ def pose_model(input_shape, match_model=None):
     out_right = flat(out_right)
     out_right = dense(out_right)
 
-
     output = concatenate([out_left, out_right], axis=1)
     output = Dense(512, activation='relu', name='fc7')(output)
 
@@ -134,4 +132,52 @@ def pose_model(input_shape, match_model=None):
     t = Dense(3, activation='relu', name='t')(output)
 
     model = Model(inputs=[input_left, input_right], outputs=[R, t])
+    return model
+
+
+def hybrid_model(pose_shape, match_shape, label_shape):
+
+    pose_left = Input(shape=pose_shape)
+    pose_right = Input(shape=pose_shape)
+    match_left = Input(shape=match_shape)
+    match_right = Input(shape=match_shape)
+    match_labels = Input(shape=label_shape)
+
+    base = base_model()
+
+    # Pose branch
+    avg_pose = AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)
+    flat_pose = Flatten()
+    dense_pose = Dense(1024, activation='relu', name='pose_fc6')
+    pose_out_left = base(pose_left)
+    pose_out_left = avg_pose(pose_out_left)
+    pose_out_left = flat_pose(pose_out_left)
+    pose_out_left = dense_pose(pose_out_left)
+
+    pose_out_right = base(pose_right)
+    pose_out_right = avg_pose(pose_out_right)
+    pose_out_right = flat_pose(pose_out_right)
+    pose_out_right = dense_pose(pose_out_right)
+
+    output = concatenate([pose_out_left, pose_out_right], axis=1)
+    output = Dense(512, activation='relu', name='pose_fc7')(output)
+
+    R = Dense(4, activation='relu', name='R')(output)
+    t = Dense(3, activation='relu', name='t')(output)
+
+    # Match branch
+    flat_match = Flatten()
+    dense_match = Dense(128, activation='relu', name='match_fc6')
+
+    match_out_left = base(match_left)
+    match_out_left = flat_match(match_out_left)
+    match_out_left = dense_match(match_out_left)
+
+    match_out_right = base(match_right)
+    match_out_right = flat_match(match_out_right)
+    match_out_right = dense_match(match_out_right)
+
+    distance = Lambda(hinge_batch, output_shape=hinge_output_shape)([match_out_left, match_out_right, match_labels])
+
+    model = Model(inputs=[pose_left, pose_right, match_left, match_right, match_labels], outputs=[R, t, distance])
     return model
