@@ -146,12 +146,12 @@ def train_matchnet(dataset_path, validation_split=0.05):
     val_generator = matchnet_gen(partition['val'], dataset_path,
                                    batch_size=10, patch_size=64, pos_ratio=0.3)
 
-    filepath = "models/matchnet{epoch:02d}.hdf5"
+    filepath = "models/matchnet.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
-                                 save_best_only=False, mode='min')
+                                 save_best_only=True, mode='min')
     model = get_model('match', match_model=None)
     model.fit_generator(generator=train_generator,
-                        steps_per_epoch=100,
+                        steps_per_epoch=1000,
                         validation_data=val_generator,
                         validation_steps=5,
                         epochs=100,
