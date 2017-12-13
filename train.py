@@ -1,77 +1,123 @@
-import numpy as np
-from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras.models import load_model, save_model
-from siamese_model import match_model, pose_model, identity_loss
 import argparse
-import datetime
+import numpy as np
+import pickle
+import os
+from random import shuffle
+import random
+from imageio import imread
+from skimage.transform import resize
+import keras
+from keras.callbacks import ModelCheckpoint
+
+from siamese_function import match_model, pose_model, hybrid_model, identity_loss
 
 
 def get_model(model_type, **kwargs):
 
+    optimizer = keras.optimizers.Adam(lr=0.001)
+
     if model_type == 'match':
-        input_shape = (None, 64, 64, 3)
-        label_shape = (None, 1)
-        match = match_model(input_shape, label_shape)
-        match.compile(optimizer='sgd',
+
+        match_shape = (64, 64, 3)
+        label_shape = (1, )
+        model = match_model(match_shape, label_shape)
+        model.compile(optimizer='sgd',
                       loss=identity_loss,
                       metrics=['accuracy'])
 
+        model.compile(optimizer, loss=identity_loss)
 
     if model_type == 'pose':
 
-        input_shape = (None, 224, 224, 3)
+        pose_shape = (224, 224, 3)
 
         if 'match_model' not in kwargs:
-            pose = pose_model(input_shape)
+            model = pose_model(pose_shape)
         else:
             match_pretrained = kwargs['match_model']
-            pose = pose_model(input_shape, match_pretrained)
+            model = pose_model(pose_shape, match_pretrained)
+            model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error'])
 
-        pose.compile(optimizer='sgd',
-                     loss=['mean_squared_error', 'mean_squared_error'],
-                     metrics=['accuracy'],
-                     loss_weights=[1., 1])
+    if model_type == 'hybrid':
 
-        return pose
+        pose_shape = (224, 224, 3)
+        match_shape = (64, 64, 3)
+        label_shape = (1,)
+
+        model = hybrid_model(pose_shape, match_shape, label_shape)
+        model.compile(optimizer, loss=['mean_squared_error', 'mean_squared_error', identity_loss])
+
+    return model
 
 
-def train(model, df_train, train_dir, fit_index, val_index, label_map,
-                model_weights_path, data_gen_args_fit={}, data_gen_args_val={}, seed=2017):
+'''
+Data generator function for yielding training images
+'''
+def posenet_generator(imgs, rel_quaternions, rel_translations, batch_size=32):
+
+    while 1:
+
+        # Placeholders for current iteration
+        x1 = np.zeros((batch_size, 224, 224, 3))
+        x2 = np.zeros((batch_size, 224, 224, 3))
+        y_q = np.zeros((batch_size, 4))
+        y_t = np.zeros((batch_size, 3))
+
+        for i in range(batch_size):
+            img1_path = random.choice(list(imgs.keys()))
+            x = list(imgs.keys())
+            x.remove(img1_path)
+            img2_path = random.choice(x)
+            x1[i, ...] = imgs[img1_path]
+            x2[i, ...] = imgs[img2_path]
+
+            k1 = 'seq1/' + img1_path + ' ' + 'seq1/' + img2_path
+            k2 = 'seq1/' + img2_path + ' ' + 'seq1/' + img1_path
+
+            if k1 in rel_quaternions.keys():
+                y_q[i, :] = rel_quaternions[k1].flatten()
+                y_t[i, :] = rel_translations[k1].flatten()
+            else:
+                y_q[i, :] = rel_quaternions[k2].flatten()
+                y_t[i, :] = rel_translations[k2].flatten()
+
+        yield ([x1, x2], [y_q, y_t])
 
 
-    callbacks = [EarlyStopping(monitor='val_loss', patience=4, verbose=1),
-                 ModelCheckpoint(model_weights_path, monitor='val_loss',
-                                 save_best_only=True, verbose=0)]
+def load_all_imgs(img_paths, dataset_path):
+    '''
+    Returns a (n x 224 x 224 x 3) np array.
+    This is because reading from img files during training is highly inefficient.
+    '''
+    imgs = {}
+    for img_path in img_paths:
+        img = imread(os.path.join(dataset_path, img_path))
+        img = resize(img, (224, 224)) * 255 - [122.63791547, 123.32784235, 112.4143373]
+        imgs[img_path] = img
+    return imgs
 
-    steps_per_epoch_fit = np.ceil(len(fit_index) / args.batch_size)
-    steps_per_epoch_val = np.ceil(len(val_index) / args.batch_size)
 
-    fit_generator = batch_generator(train_dir,
-                                    df_train.iloc[fit_index],
-                                    label_map,
-                                    batch_size=args.batch_size,
-                                    number_of_batches=steps_per_epoch_fit,
-                                    data_gen_args=data_gen_args_fit,
-                                    seed=seed)
+def train(model, imgs_train, imgs_val):
 
-    val_generator = batch_generator(train_dir,
-                                    df_train.iloc[val_index],
-                                    label_map,
-                                    batch_size=args.batch_size,
-                                    shuffle=False,
-                                    number_of_batches=steps_per_epoch_val,
-                                    data_gen_args=data_gen_args_val)
-    try:
-        model.fit_generator(generator=fit_generator,
-                            steps_per_epoch=steps_per_epoch_fit,
-                            epochs=args.epochs,
-                            verbose=1,
-                            validation_data=val_generator,
-                            validation_steps=steps_per_epoch_val,
-                            callbacks=callbacks)
-    except KeyboardInterrupt:
-        pass
+    rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
+    rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
 
+    train_generator = posenet_generator(imgs_train, rel_quaternions,
+                                        rel_translations, batch_size=32)
+    val_generator = posenet_generator(imgs_val, rel_quaternions,
+                                      rel_translations, batch_size=32)
+
+    # For checkpointing
+    filepath = "models/posenet-{e:02d}-{val_acc:.2f}.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
+                                 save_best_only=False, mode='min')
+
+    model.fit_generator(generator=train_generator,
+                        steps_per_epoch=100,
+                        validation_data=val_generator,
+                        validation_steps=5,
+                        epochs=100,
+                        callbacks=[checkpoint])
     return model
 
 
@@ -83,67 +129,30 @@ def predict():
     pass
 
 
-def get_name():
+def main(args):
 
-    time_str = datetime.now().strftime("%M_%H_%d")
-    model_name = '{}/{}_{}.h5'.format(args.path, args.model_type, time_str)
-    return model_name
-
-
-def main():
-
-    if args.model_type == 'match':
-        model = get_model('match')
-
-    else:
-        if args.pretrain_path is not None:
-            match_trained = load_model(args.pretrain_path)
-            model = get_model('match', pretrain=match_trained)
-        else:
-            model = get_model('match')
-
-    if args.train:
-        trained_model = train(model)
-        save_model(get_name(), trained_model)
-
-        print('Finished training!')
-
-    if args.evaluate:
-        model = load_model(args.e_model)
-        evaluate(model)
-        print('Finished Evaluating!')
-
-    if args.predict:
-        model = load_model(args.p_model)
-        predict(model)
-        print('Finished Predicting!')
+    image_paths = os.listdir(args.dataset_path)
+    shuffle(image_paths)
+    validation_split = 0.05
+    partition = {'train': image_paths[:int(validation_split*len(image_paths))],
+                 'val': image_paths[int(validation_split*len(image_paths)):]}
 
 
+    imgs_train = load_all_imgs(partition['train'], args.dataset_path)
+    imgs_val = load_all_imgs(partition['val'], args.dataset_path)
+
+    model = get_model('pose', match_model=None)
+    trained_model = train(model, imgs_train, imgs_val)
+
+
+
+# Run the script as follows:
+# python train.py --dataset_path='/home/sudeep/khushi/KingsCollege/seq1'
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='PyTorch Training')
-
-    parser.add_argument('--cuda', action='store_true', default=False, help='Enables CUDA training')
-    parser.add_argument('--train', type=int, default=True, help='Train model')
-    parser.add_argument('--model_type', type=str, default='', help='Train Pose/SIFT model')
-    parser.add_argument('--pretrain_path', type=str, default='', help='Path to pretrained SIFT model')
-
-    parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train (default: 50)')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch Size (default: 32)')
-    parser.add_argument('--lr', type=float, default=0.01, metavar='LR', help='learning rate (default: 0.01)')
-    parser.add_argument('--momentum', type=float, default=0.9, metavar='M', help='SGD momentum (default: 0.5)')
-
-    parser.add_argument('--path', type=str, default='', help='Path to store trained models')
-    parser.add_argument('--log_path', type=str, default='', help='Path to store logs')
-
-    parser.add_argument('--evaluate', type=int, default=False, help='Evaluate model')
-    parser.add_argument('--e_model', type=int, default=False, help='Model to evaluate')
-
-    parser.add_argument('--predict', type=int, default=False, help='Get predictions')
-    parser.add_argument('--p_model', type=int, default=False, help='Model to use for predictions')
+    parser = argparse.ArgumentParser(description='Relative Pose Estimation')
+    parser.add_argument('--dataset_path', type=str, default='', help='Path to dataset')
 
     args = parser.parse_args()
 
-    main()
-
-
+    main(args)
