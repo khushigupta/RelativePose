@@ -11,22 +11,22 @@ def identity_loss(y_true, y_pred):
     return K.mean(y_pred)
 
 
-def hinge_single(input):
+def hinge_single(single_input):
 
-    x, y, l = input
+    x, y, l = single_input
 
     def hinge1(a, b):
-        return K.sqrt(K.sum(K.square(a - b), axis=0, keepdims=True))
+        return K.sqrt(K.sum(K.square(a - b), axis=0))
 
     def hinge2(a, b):
-        return K.sqrt(K.sum(K.square(a - b), axis=0, keepdims=True))
-        #return max(0, 1 - K.sqrt(K.sum(K.square(a - b), axis=0, keepdims=True)))
+        return tf.maximum(0.0, 1 - hinge1(a, b))
 
-    return tf.cond(tf.equal(l[0], 1), lambda: hinge1(x, y), lambda: hinge2(x, y))
+    output = tf.cond(tf.equal(l[0], 1), lambda: hinge1(x, y), lambda: hinge2(x, y))
+    return output
 
 
 def hinge_batch(inputs):
-    return tf.map_fn(fn=hinge_single, elems=[inputs[0], inputs[1], inputs[2]])
+    return tf.map_fn(fn=hinge_single, elems=(inputs[0], inputs[1], inputs[2]), dtype=tf.float32)
 
 
 def hinge_output_shape(shapes):
@@ -135,8 +135,3 @@ def pose_model(input_shape, match_model=None):
 
     model = Model(inputs=[input_left, input_right], outputs=[R, t])
     return model
-
-
-# m = match_model((64, 64, 3), (1, ))
-
-# p = pose_model((224, 224, 3), m)
