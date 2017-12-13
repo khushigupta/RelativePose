@@ -95,7 +95,7 @@ def load_all_imgs(img_paths, dataset_path):
 
 
 def train(model, imgs_train, imgs_val):
-
+    ''' Training implementation for PoseNet as of now'''
     rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
     rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
 
@@ -105,7 +105,7 @@ def train(model, imgs_train, imgs_val):
                                       rel_translations, batch_size=32)
 
     # For checkpointing
-    filepath = "models/posenet-{e:02d}-{val_acc:.2f}.hdf5"
+    filepath = "models/posenet-{e:02d}.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
                                  save_best_only=False, mode='min')
 
