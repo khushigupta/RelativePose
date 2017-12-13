@@ -40,7 +40,7 @@ def get_model(model_type, **kwargs):
 '''
 Data generator function for yielding training images
 '''
-def generate(imgs, rel_quaternions, rel_translations, batch_size = 32):
+def posenet_generator(imgs, rel_quaternions, rel_translations, batch_size=32):
 
     while 1:
 
@@ -70,13 +70,14 @@ def generate(imgs, rel_quaternions, rel_translations, batch_size = 32):
 
         yield ([x1, x2], [y_q, y_t])
 
-'''
-Returns a (n x 224 x 224 x 3) np array.
-This is because reading from img files during training is highly inefficient.
-'''
+
 def load_all_imgs(img_paths, dataset_path):
+    '''
+    Returns a (n x 224 x 224 x 3) np array.
+    This is because reading from img files during training is highly inefficient.
+    '''
     imgs = {}
-    for img_path in os.listdir(dataset_path):
+    for img_path in img_paths:
         img = imread(os.path.join(dataset_path, img_path))
         img = resize(img, (224, 224)) * 255 - [122.63791547, 123.32784235, 112.4143373]
         imgs[img_path] = img
@@ -88,12 +89,15 @@ def train(model, imgs_train, imgs_val):
     rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
     rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
 
-    train_generator = generate(imgs_train, rel_quaternions, rel_translations, batch_size=32)
-    val_generator = generate(imgs_val, rel_quaternions, rel_translations, batch_size=32)
+    train_generator = posenet_generator(imgs_train, rel_quaternions,
+                                        rel_translations, batch_size=32)
+    val_generator = posenet_generator(imgs_val, rel_quaternions,
+                                      rel_translations, batch_size=32)
 
     # For checkpointing
-    filepath="models/posenet-{e:02d}-{val_acc:.2f}.hdf5"
-    checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=False, mode='min')
+    filepath = "models/posenet-{e:02d}-{val_acc:.2f}.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
+                                 save_best_only=False, mode='min')
 
     model.fit_generator(generator=train_generator,
                         steps_per_epoch=1000,
