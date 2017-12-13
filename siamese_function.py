@@ -11,17 +11,25 @@ def identity_loss(y_true, y_pred):
     return K.mean(y_pred)
 
 
-def euclidean_distance(outputs):
-    x, y, l = outputs
-    return K.sqrt(K.sum(K.square(x - y), axis=1, keepdims=True))
+def hinge_single(input):
 
-    # hinge1 = K.sqrt(K.sum(K.square(x - y), axis=1, keepdims=True))
-    # hinge2 = max(0, 1 - K.sqrt(K.sum(K.square(x - y), axis=1, keepdims=True)))
-    #
-    # return tf.cond(l == 1, hinge1, hinge2)
+    x, y, l = input
+
+    def hinge1(a, b):
+        return K.sqrt(K.sum(K.square(a - b), axis=0, keepdims=True))
+
+    def hinge2(a, b):
+        return K.sqrt(K.sum(K.square(a - b), axis=0, keepdims=True))
+        #return max(0, 1 - K.sqrt(K.sum(K.square(a - b), axis=0, keepdims=True)))
+
+    return tf.cond(tf.equal(l[0], 1), lambda: hinge1(x, y), lambda: hinge2(x, y))
 
 
-def eucl_dist_output_shape(shapes):
+def hinge_batch(inputs):
+    return tf.map_fn(fn=hinge_single, elems=[inputs[0], inputs[1], inputs[2]])
+
+
+def hinge_output_shape(shapes):
     return shapes[0][0], 1
 
 
@@ -88,10 +96,9 @@ def match_model(input_shape, label_shape):
     out_right = flat(out_right)
     out_right = dense(out_right)
 
-    distance = Lambda(euclidean_distance,
-                      output_shape=eucl_dist_output_shape)([out_left, out_right, labels])
+    distance = Lambda(hinge_batch, output_shape=hinge_output_shape)([out_left, out_right, labels])
 
-    model = Model([input_left, input_right], distance)
+    model = Model(inputs=[input_left, input_right, labels], outputs=distance)
     return model
 
 
@@ -101,37 +108,27 @@ def pose_model(input_shape, match_model=None):
     input_right = Input(shape=input_shape)
 
     if match_model is None:
-
         base = base_model(input_shape)
-        avg = AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)
-        flat = Flatten()
-        dense = Dense(4096, activation='relu', name='fc6')
-
-        out_left = base(input_left)
-        out_left = avg(out_left)
-        out_left = flat(out_left)
-        out_left = dense(out_left)
-
-        out_right = base(input_right)
-        out_right = avg(out_right)
-        out_right = flat(out_right)
-        out_right = dense(out_right)
-
     else:
+        base = match_model.layers[2]  # the base model
 
-        base = Sequential()
-        for i, layer in enumerate(match_model.layers):
-            if 1 <= i <= 17:
-                base.add(layer)
-        base.add(AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None))
-        base.add(Flatten())
-        base.add(Dense(4096, activation='relu', name='fc6'))
-        out_left = base(input_left)
-        out_right = base(input_right)
+    avg = AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)
+    flat = Flatten()
+    dense = Dense(1024, activation='relu', name='fc6')
+
+    out_left = base(input_left)
+    out_left = avg(out_left)
+    out_left = flat(out_left)
+    out_left = dense(out_left)
+
+    out_right = base(input_right)
+    out_right = avg(out_right)
+    out_right = flat(out_right)
+    out_right = dense(out_right)
 
 
     output = concatenate([out_left, out_right], axis=1)
-    output = Dense(4096, activation='relu', name='fc7')(output)
+    output = Dense(512, activation='relu', name='fc7')(output)
 
     R = Dense(4, activation='relu', name='R')(output)
     t = Dense(3, activation='relu', name='t')(output)
@@ -142,4 +139,5 @@ def pose_model(input_shape, match_model=None):
 
 m = match_model((64, 64, 3), (1, ))
 
-# p = pose_model((224, 224, 3), None)
+
+#p = pose_model((224, 224, 3), m)
