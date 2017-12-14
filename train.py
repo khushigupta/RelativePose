@@ -120,9 +120,9 @@ def train_posenet(dataset_path, validation_split=0.05):
 
 
     ###====================== Train model ===========================###
-    filepath = "models/posenet-{epoch:02d}.hdf5"
+    filepath = "models/posenet.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
-                                 save_best_only=False, mode='min')
+                                 save_best_only=True, mode='min')
     model = get_model('pose', match_model=None)
     model.fit_generator(generator=train_generator,
                         steps_per_epoch=100,
@@ -150,6 +150,7 @@ def train_matchnet(dataset_path, validation_split=0.05):
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
                                  save_best_only=True, mode='min')
     model = get_model('match', match_model=None)
+    print(model.layers[2].summary())
     model.fit_generator(generator=train_generator,
                         steps_per_epoch=1000,
                         validation_data=val_generator,

@@ -47,7 +47,7 @@ def vgg_16():
 def base_model():
 
     vgg = vgg_16()
-    inp = Input(shape=(None, None, 3))
+    inp = Input(shape=(64, 64, 3))
     x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1', weights=vgg.layers[1].get_weights())(inp)
     x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2', weights=vgg.layers[2].get_weights())(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool', weights=vgg.layers[3].get_weights())(x)
@@ -181,3 +181,4 @@ def hybrid_model(pose_shape, match_shape, label_shape):
 
     model = Model(inputs=[pose_left, pose_right, match_left, match_right, match_labels], outputs=[R, t, distance])
     return model
+

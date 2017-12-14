@@ -27,7 +27,6 @@ def get_crop(img, center, patch_size=64):
     return img[int(x_pos-patch_size/2):int(x_pos+patch_size/2),
                int(y_pos-patch_size/2):int(y_pos+patch_size/2), :]
 
-
 def get_negative_crop(img, center_to_avoid, patch_size=64):
     '''
     Returns a patch of size 64x64 by default which does not include a given
