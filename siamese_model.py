@@ -85,15 +85,18 @@ def match_model(input_shape, label_shape):
 
     base = base_model()
     flat = Flatten()
-    dense = Dense(128, activation='relu', name='fc6')
+    dense1 = Dense(512, activation='relu', name='fc6')
+    dense2 = Dense(128, activation=None, name='fc7')
 
     out_left = base(input_left)
     out_left = flat(out_left)
-    out_left = dense(out_left)
+    out_left = dense1(out_left)
+    out_left = dense2(out_left)
 
     out_right = base(input_right)
     out_right = flat(out_right)
-    out_right = dense(out_right)
+    out_right = dense1(out_right)
+    out_right = dense2(out_right)
 
     distance = Lambda(hinge_batch, output_shape=hinge_output_shape)([out_left, out_right, labels])
 
@@ -111,9 +114,10 @@ def pose_model(input_shape, match_model=None):
     else:
         base = match_model.layers[2]  # the base model
 
-    avg = AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)
+    # avg = AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)
+    avg = MaxPooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)
     flat = Flatten()
-    dense = Dense(1024, activation='relu', name='fc6')
+    dense = Dense(2048, activation='relu', name='fc6')
 
     out_left = base(input_left)
     out_left = avg(out_left)
@@ -128,8 +132,8 @@ def pose_model(input_shape, match_model=None):
     output = concatenate([out_left, out_right], axis=1)
     output = Dense(512, activation='relu', name='fc7')(output)
 
-    R = Dense(4, activation='relu', name='R')(output)
-    t = Dense(3, activation='relu', name='t')(output)
+    R = Dense(4, activation='tanh', name='R')(output)
+    t = Dense(3, activation='tanh', name='t')(output)
 
     model = Model(inputs=[input_left, input_right], outputs=[R, t])
     return model
@@ -146,36 +150,40 @@ def hybrid_model(pose_shape, match_shape, label_shape):
     base = base_model()
 
     # Pose branch
-    avg_pose = AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)
+    max_pose = MaxPooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)
     flat_pose = Flatten()
-    dense_pose = Dense(1024, activation='relu', name='pose_fc6')
+    dense_pose = Dense(2048, activation='relu', name='pose_fc6')
+
     pose_out_left = base(pose_left)
-    pose_out_left = avg_pose(pose_out_left)
+    pose_out_left = max_pose(pose_out_left)
     pose_out_left = flat_pose(pose_out_left)
     pose_out_left = dense_pose(pose_out_left)
 
     pose_out_right = base(pose_right)
-    pose_out_right = avg_pose(pose_out_right)
+    pose_out_right = max_pose(pose_out_right)
     pose_out_right = flat_pose(pose_out_right)
     pose_out_right = dense_pose(pose_out_right)
 
     output = concatenate([pose_out_left, pose_out_right], axis=1)
     output = Dense(512, activation='relu', name='pose_fc7')(output)
 
-    R = Dense(4, activation='relu', name='R')(output)
-    t = Dense(3, activation='relu', name='t')(output)
+    R = Dense(4, activation='tanh', name='R')(output)
+    t = Dense(3, activation='tanh', name='t')(output)
 
     # Match branch
     flat_match = Flatten()
-    dense_match = Dense(128, activation='relu', name='match_fc6')
+    dense_match1 = Dense(512, activation='relu', name='match_fc6')
+    dense_match2 = Dense(128, activation=None, name='match_fc7')
 
     match_out_left = base(match_left)
     match_out_left = flat_match(match_out_left)
-    match_out_left = dense_match(match_out_left)
+    match_out_left = dense_match1(match_out_left)
+    match_out_left = dense_match2(match_out_left)
 
     match_out_right = base(match_right)
     match_out_right = flat_match(match_out_right)
-    match_out_right = dense_match(match_out_right)
+    match_out_right = dense_match1(match_out_right)
+    match_out_right = dense_match2(match_out_right)
 
     distance = Lambda(hinge_batch, output_shape=hinge_output_shape)([match_out_left, match_out_right, match_labels])
 

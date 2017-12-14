@@ -13,17 +13,34 @@ import datetime
 from keras import optimizers
 from keras.models import load_model, save_model
 from siamese_model import match_model, pose_model, identity_loss
-
+import matplotlib.pyplot as plt
 from train import get_model, load_all_imgs, posenet_generator
 
 
+def plot_results(errors, save_file):
+    errors.sort()
+    deg_err = [np.rad2deg(x) for x in errors]
+    x = []
+    y = []
+    for i in range(len(deg_err)):
+        y.append((i+1)//len(deg_err))
+        x.append(np.max(deg_err[:i+1]))
+
+    fig, ax = plt.subplots( nrows=1, ncols=1 )
+    plt.plot(x, y)
+    plt.ylabel('Fraction of histogram')
+    plt.xlabel('Angular error')
+    fig.savefig(save_file)
+    plt.close(fig)
+
+    
 def relative_orientation_error(q1, q2):
     q1_norm = np.linalg.norm(q1, ord=2)
     q2_norm = np.linalg.norm(q2, ord=2)
     if q1_norm > 0:
-    	q1 = q1 / q1_norm
+        q1 = q1/q1_norm
     if q2_norm > 0:
-	q2 = q2/ q2_norm
+        q2 = q2/q2_norm
     theta_1 = 2*np.arccos(q1[0])
     theta_2 = 2*np.arccos(q2[0])
 
@@ -35,11 +52,11 @@ def relative_translation(t1, t2):
     t1_norm = np.linalg.norm(t1, ord=2)
     t2_norm = np.linalg.norm(t2, ord=2)
     if t1_norm > 0:
-    	t1 = t1 / t1_norm
+        t1 = t1 / t1_norm
     if t2_norm > 0:
-	t2 = t2/ t2_norm
-    angle = np.arccos(np.inner(t1, t2))
+        t2 = t2/ t2_norm
 
+    angle = np.arccos(np.inner(t1, t2))
     return abs(angle)
 
 
@@ -93,8 +110,9 @@ def evaluate_posenet(model_name, dataset_path):
     roe = []
     rte = []
     for i in range(len(pred_q)):
-    	roe.append(relative_orientation_error(test_q[i].flatten(), pred_q[i].flatten()))
-    	rte.append(relative_translation(test_t[i].flatten(), pred_t[i].flatten()))
+        roe.append(relative_orientation_error(test_q[i].flatten(), pred_q[i].flatten()))
+        rte.append(relative_translation(test_t[i].flatten(), pred_t[i].flatten()))
+
     print('-----------------------------------------------------')
     print('ROE ....')
     print('min(ROE) = %0.3f ---- %0.3f'%(np.min(roe), np.rad2deg(np.min(roe))))
@@ -106,7 +124,8 @@ def evaluate_posenet(model_name, dataset_path):
     print('max(RTE) = %0.3f ---- %0.3f'%(np.max(rte), np.rad2deg(np.max(rte))))
     print('std(RTE) = %0.3f ---- %0.3f'%(np.std(rte), np.rad2deg(np.std(rte))))    
     print('mean(RTE) = %0.3f ---- %0.3f'%(np.mean(rte), np.rad2deg(np.mean(rte))))    
-
+    plot_results(roe, 'roe.png')
+    plot_results(rte, 'rte.png')
 
 
 # Run the script as follows:

@@ -25,7 +25,7 @@ def get_model(model_type, **kwargs):
         model = match_model(match_shape, label_shape)
         model.compile(optimizer=optimizer,
                       loss=identity_loss,
-                      metrics=['accuracy'])
+                      )
 
         model.compile(optimizer, loss=identity_loss)
 
@@ -155,8 +155,9 @@ def train_matchnet(dataset_path, validation_split=0.05):
                         steps_per_epoch=1000,
                         validation_data=val_generator,
                         validation_steps=5,
-                        epochs=100,
+                        epochs=10,
                         callbacks=[checkpoint])
+
 
 def evaluate():
     pass
@@ -180,7 +181,7 @@ def main(args):
 
 
 # Run the script as follows:
-# python train.py --dataset_path='/home/sudeep/khushi/KingsCollege/seq1' --model=posenet
+# CUDA_VISIBLE_DEVICES=0 python train.py --dataset_path='/home/sudeep/khushi/KingsCollege/seq1' --model=posenet
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Relative Pose Estimation')
