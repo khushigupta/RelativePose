@@ -25,7 +25,7 @@ def get_model(model_type, **kwargs):
         model = match_model(match_shape, label_shape)
         model.compile(optimizer=optimizer,
                       loss=identity_loss,
-                      )
+                      metrics=['accuracy'])
 
         model.compile(optimizer, loss=identity_loss)
 
@@ -131,6 +131,7 @@ def train_posenet(dataset_path, validation_split=0.05):
                         epochs=100,
                         callbacks=[checkpoint])
     return model
+
 
 def train_matchnet(dataset_path, validation_split=0.05):
 

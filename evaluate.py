@@ -23,7 +23,7 @@ def plot_results(errors, save_file):
     x = []
     y = []
     for i in range(len(deg_err)):
-        y.append((i+1)//len(deg_err))
+        y.append(float(i+1)/len(deg_err))
         x.append(np.max(deg_err[:i+1]))
 
     fig, ax = plt.subplots( nrows=1, ncols=1 )
@@ -34,17 +34,31 @@ def plot_results(errors, save_file):
     plt.close(fig)
 
     
-def relative_orientation_error(q1, q2):
+def relative_orientation_error(q1, q2, error_type=3):
+
     q1_norm = np.linalg.norm(q1, ord=2)
     q2_norm = np.linalg.norm(q2, ord=2)
     if q1_norm > 0:
         q1 = q1/q1_norm
     if q2_norm > 0:
         q2 = q2/q2_norm
-    theta_1 = 2*np.arccos(q1[0])
-    theta_2 = 2*np.arccos(q2[0])
 
-    return abs(theta_1 - theta_2)
+    if error_type == 1:
+        theta_1 = 2*np.arccos(q1[0])
+        theta_2 = 2*np.arccos(q2[0])
+        return abs(theta_1 - theta_2)
+
+    elif error_type == 2:
+        q1 = [q1[0], -q1[1], -q1[2], -q1[3]]
+        z = np.multiply(q2, q1)
+        z = z/np.linalg.norm(z, ord=2)
+
+        return abs(2*np.arccos(z[0]))
+
+    elif error_type == 3:
+
+        theta = np.arccos(2*np.square(np.dot(q2, q1))-1)
+        return abs(theta)
 
 
 def relative_translation(t1, t2):
@@ -110,22 +124,24 @@ def evaluate_posenet(model_name, dataset_path):
     roe = []
     rte = []
     for i in range(len(pred_q)):
-        roe.append(relative_orientation_error(test_q[i].flatten(), pred_q[i].flatten()))
+        r_rel = relative_orientation_error(test_q[i].flatten(), pred_q[i].flatten())
+        # r_rel = r_rel % np.pi
+        roe.append(r_rel)
         rte.append(relative_translation(test_t[i].flatten(), pred_t[i].flatten()))
 
     print('-----------------------------------------------------')
     print('ROE ....')
     print('min(ROE) = %0.3f ---- %0.3f'%(np.min(roe), np.rad2deg(np.min(roe))))
     print('max(ROE) = %0.3f ---- %0.3f'%(np.max(roe), np.rad2deg(np.max(roe))))
-    print('std(ROE) = %0.3f ---- %0.3f'%(np.std(roe), np.rad2deg(np.std(roe))))    
+    print('std(ROE) = %0.3f ---- %0.3f'%(np.std(roe), np.rad2deg(np.std(roe))))
     print('mean(ROE) = %0.3f ---- %0.3f'%(np.mean(roe), np.rad2deg(np.mean(roe))))
     print('RTE ....')
     print('min(RTE) = %0.3f ---- %0.3f'%(np.min(rte), np.rad2deg(np.min(rte))))
     print('max(RTE) = %0.3f ---- %0.3f'%(np.max(rte), np.rad2deg(np.max(rte))))
     print('std(RTE) = %0.3f ---- %0.3f'%(np.std(rte), np.rad2deg(np.std(rte))))    
     print('mean(RTE) = %0.3f ---- %0.3f'%(np.mean(rte), np.rad2deg(np.mean(rte))))    
-    plot_results(roe, 'roe.png')
-    plot_results(rte, 'rte.png')
+    # plot_results(roe, 'roe.png')
+    # plot_results(rte, 'rte.png')
 
 
 # Run the script as follows:

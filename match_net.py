@@ -57,8 +57,8 @@ def matchnet_gen(matches, dataset_path, batch_size=10, patch_size=64, pos_ratio=
 
         # One image pair per iteration
         match = random.choice(matches)
-        img1 = imread(os.path.join(dataset_path, os.path.basename(match.img1_path)))
-        img2 = imread(os.path.join(dataset_path, os.path.basename(match.img2_path)))
+        img1 = imread(os.path.join(dataset_path, os.path.basename(match.img1_path))) - [122.63791547, 123.32784235, 112.4143373]
+        img2 = imread(os.path.join(dataset_path, os.path.basename(match.img2_path))) - [122.63791547, 123.32784235, 112.4143373]
 
         for i in range(batch_size):
             loc = random.choice(match.locs)

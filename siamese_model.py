@@ -86,7 +86,7 @@ def match_model(input_shape, label_shape):
     base = base_model()
     flat = Flatten()
     dense1 = Dense(512, activation='relu', name='fc6')
-    dense2 = Dense(128, activation=None, name='fc7')
+    dense2 = Dense(128, activation='relu', name='fc7')
 
     out_left = base(input_left)
     out_left = flat(out_left)
