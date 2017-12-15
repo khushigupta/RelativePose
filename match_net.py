@@ -46,7 +46,8 @@ def get_negative_crop(img, center_to_avoid, patch_size=64):
     return img[int(x_rand-patch_size/2):int(x_rand+patch_size/2),
                int(y_rand-patch_size/2):int(y_rand+patch_size/2), :]
 
-def matchnet_gen(matches, dataset_path, batch_size=10, patch_size=64, pos_ratio=0.3):
+def matchnet_gen(matches, dataset_path, batch_size=10, patch_size=64, pos_ratio=0.3,
+                 mode='yield'):
     ''' Generator for the matchnet architecture '''
 
     while 1:
@@ -76,5 +77,7 @@ def matchnet_gen(matches, dataset_path, batch_size=10, patch_size=64, pos_ratio=
             else:
                 patches2[i, ...] = get_negative_crop(img2, center_to_avoid=loc[1], patch_size=64)
                 labels[i] = 0
-
-        yield [patches1, patches2, labels], np.zeros((batch_size))
+        if mode == 'return':
+            return [patches1, patches2, labels], np.zeros((batch_size))
+        else:
+            yield [patches1, patches2, labels], np.zeros((batch_size))

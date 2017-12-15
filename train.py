@@ -52,7 +52,21 @@ def get_model(model_type, **kwargs):
     return model
 
 
-def posenet_generator(imgs, rel_quaternions, rel_translations, batch_size=32):
+def load_all_imgs(img_paths, dataset_path):
+    '''
+    Returns a (n x 224 x 224 x 3) np array.
+    This is because reading from img files during training is highly inefficient.
+    '''
+    imgs = {}
+    for img_path in img_paths:
+        img = imread(os.path.join(dataset_path, img_path))
+        img = resize(img, (224, 224)) * 255 - [122.63791547, 123.32784235, 112.4143373]
+        imgs[img_path] = img
+    return imgs
+
+
+def posenet_generator(imgs, rel_quaternions, rel_translations, batch_size=32,
+                      mode='yield'):
     ''' Data generator function for yielding training images '''
 
     while 1:
@@ -80,21 +94,17 @@ def posenet_generator(imgs, rel_quaternions, rel_translations, batch_size=32):
             else:
                 y_q[i, :] = rel_quaternions[k2].flatten()
                 y_t[i, :] = rel_translations[k2].flatten()
+        if mode == 'return':
+            return ([x1, x2], [y_q, y_t])
+        else:
+            yield ([x1, x2], [y_q, y_t])
 
-        yield ([x1, x2], [y_q, y_t])
-
-
-def load_all_imgs(img_paths, dataset_path):
-    '''
-    Returns a (n x 224 x 224 x 3) np array.
-    This is because reading from img files during training is highly inefficient.
-    '''
-    imgs = {}
-    for img_path in img_paths:
-        img = imread(os.path.join(dataset_path, img_path))
-        img = resize(img, (224, 224)) * 255 - [122.63791547, 123.32784235, 112.4143373]
-        imgs[img_path] = img
-    return imgs
+def hybrid_generator(imgs, rel_quaternions, rel_translations, matches, dataset_path, batch_size=32):
+    posenet_ip, posenet_op = posenet_generator(imgs, rel_quaternions, rel_translations, batch_size,
+                                               mode='return')
+    matchnet_ip, matchnet_op = matchnet_gen(matches, dataset_path, batch_size=10, patch_size=64, pos_ratio=0.3,
+                                            mode='yield')
+    yield [posenet_ip[0], posenet_ip[1], matchnet_ip[0], matchnet_ip[1], matchnet_ip[2]], (posenet_op[0], posenet_op[1])
 
 
 def train_posenet(dataset_path, validation_split=0.05):
@@ -145,7 +155,7 @@ def train_matchnet(dataset_path, validation_split=0.05):
     train_generator = matchnet_gen(partition['train'], dataset_path,
                                    batch_size=10, patch_size=64, pos_ratio=0.3)
     val_generator = matchnet_gen(partition['val'], dataset_path,
-                                   batch_size=10, patch_size=64, pos_ratio=0.3)
+                                 batch_size=10, patch_size=64, pos_ratio=0.3)
 
     filepath = "models/matchnet.hdf5"
     checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
@@ -159,13 +169,46 @@ def train_matchnet(dataset_path, validation_split=0.05):
                         epochs=10,
                         callbacks=[checkpoint])
 
+def train_hybrid(dataset_path, validation_split=0.05):
+    ''' Training implementation for the Hybrid model'''
 
-def evaluate():
-    pass
+    ###====================== Fetch all data ===========================###
+    # For PoseNet
+    image_paths = os.listdir(dataset_path)
+    shuffle(image_paths)
+    partition_img_paths = {'train': image_paths[:int(validation_split*len(image_paths))],
+                           'val': image_paths[int(validation_split*len(image_paths)):]}
+    imgs_train = load_all_imgs(partition_img_paths['train'], dataset_path)
+    imgs_val = load_all_imgs(partition_img_paths['val'], dataset_path)
+
+    rel_quaternions = pickle.load(open("data/rel_quaternions.pkl", "rb"))
+    rel_translations = pickle.load(open("data/rel_translations.pkl", "rb"))
+
+    # For MatchNet
+    matches = pickle.load(open("data/matches_clean_2.pkl", "rb"))
+    shuffle(matches)
+    partition_matches = {'train': matches[:int(validation_split*len(matches))],
+                         'val': matches[int(validation_split*len(matches)):]}
+
+    ###====================== Generators ===========================###
+    train_generator = hybrid_generator(imgs_train, rel_quaternions,
+                                       rel_translations, partition_matches['train'], dataset_path, batch_size=32)
+    val_generator = hybrid_generator(imgs_val, rel_quaternions,
+                                     rel_translations, partition_matches['val'], dataset_path, batch_size=32)
 
 
-def predict():
-    pass
+    ###====================== Train model ===========================###
+    filepath = "models/hybrid.hdf5"
+    checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
+                                 save_best_only=True, mode='min')
+    model = get_model('hybrid', match_model=None)
+    model.fit_generator(generator=train_generator,
+                        steps_per_epoch=100,
+                        validation_data=val_generator,
+                        validation_steps=5,
+                        epochs=100,
+                        callbacks=[checkpoint])
+    return model
 
 
 def main(args):
@@ -175,7 +218,7 @@ def main(args):
     elif args.model == 'matchnet':
         train_matchnet(args.dataset_path)
     elif args.model == 'hybrid':
-        print('Model not implemented!')
+        train_hybrid(args.dataset_path)
     else:
         print('Invalid model. Options are posenet, matchnet, hybrid')
 
